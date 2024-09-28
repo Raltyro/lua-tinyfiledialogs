@@ -93,6 +93,7 @@ jobs:
       run: cmake -Bbuild -S. -DCMAKE_INSTALL_PREFIX=%CD%\install -A ${{ matrix.arch }} -DLUA_INCLUDE_DIR=%CD%\LuaJIT\src -DLUA_LIBRARIES=%CD%\LuaJIT\src\lua51.lib
     - name: Build
       run: cmake --build build --config Release --target install
+    - name: Artifact
       if: always()
       uses: actions/upload-artifact@v4
       with:
