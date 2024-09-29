@@ -66,7 +66,6 @@ static int GetBool (lua_State * L, const char * key)
 	int bval = lua_toboolean(L, -1);
 
 	lua_pop(L, 1);	// ...
-
 	return bval;
 }
 
@@ -79,8 +78,19 @@ static const char * GetStrOrBlank (lua_State * L, const char * key, const char *
 	if (!lua_isnil(L, -1)) str = luaL_checkstring(L, -1);
 
 	lua_pop(L, 1);
-
 	return str;
+}
+
+static const wchar_t * GetStrOrBlankW (lua_State * L, const char * key, const char * blank = "")
+{
+	lua_getfield(L, 1, key);// ..., str?
+
+	const char * str = blank;	// might be NULL, thus not using luaL_optstring
+
+	if (!lua_isnil(L, -1)) str = luaL_checkstring(L, -1);
+
+	lua_pop(L, 1);
+	return tinyfd_utf8to16(str);
 }
 
 static int GetFilters (lua_State * L, const char *** filters)
@@ -102,8 +112,31 @@ static int GetFilters (lua_State * L, const char *** filters)
 			(*filters)[nfilters++] = luaL_checkstring(L, -1);
 		}
 	}
-
 	else if (!lua_isnil(L, -1)) (*filters)[nfilters++] = luaL_checkstring(L, -1);
+
+	return nfilters;
+}
+
+static int GetFiltersW (lua_State * L, const wchar_t *** filters)
+{
+	int nfilters = 0;
+
+	lua_getfield(L, 1, "filter_patterns");	// ..., patts
+
+	if (lua_istable(L, -1))
+	{
+		int n = lua_objlen(L, -1);
+
+		if (n > STATIC_FILTER_COUNT) *filters = (const wchar_t **)lua_newuserdata(L, sizeof(const wchar_t *) * n);// ..., patts, filters
+
+		for (int i = 1; i <= n; ++i, lua_pop(L, 1))
+		{
+			lua_rawgeti(L, -1, i);	// ..., patts[, filters], patt
+
+			(*filters)[nfilters++] = tinyfd_utf8to16(luaL_checkstring(L, -1));
+		}
+	}
+	else if (!lua_isnil(L, -1)) (*filters)[nfilters++] = tinyfd_utf8to16(luaL_checkstring(L, -1));
 
 	return nfilters;
 }
@@ -111,8 +144,15 @@ static int GetFilters (lua_State * L, const char *** filters)
 static int StringResponse (lua_State * L, const char * res)
 {
 	if (!res) lua_pushboolean(L, 0);// ..., false
-
 	else lua_pushstring(L, res);// ..., res
+
+	return 1;
+}
+
+static int StringResponseW (lua_State * L, const wchar_t * res)
+{
+	if (!res) lua_pushboolean(L, 0);// ..., false
+	else lua_pushstring(L, tinyfd_utf16toMbcs(res));// ..., res
 
 	return 1;
 }
@@ -127,6 +167,20 @@ static int w_messageBox (lua_State * L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE);
 
+	#ifdef _WIN32
+	const wchar_t * title = GetStrOrBlankW(L, "title");
+	const wchar_t * message = GetStrOrBlankW(L, "message");
+	const char * dialog_types[] = { "ok", "okcancel", "yesno" };
+	const char * icon_types[] = { "info", "warning", "error", "question" };
+
+	lua_getfield(L, 1, "dialog_type");	// opts, dialog_type
+	lua_getfield(L, 1, "icon_type");// opts, dialog_type, icon_type
+
+	const wchar_t * dtype = tinyfd_mbcsTo16(dialog_types[luaL_checkoption(L, -2, "ok", dialog_types)]);
+	const wchar_t * itype = tinyfd_mbcsTo16(icon_types[luaL_checkoption(L, -1, "info", icon_types)]);
+
+	lua_pushboolean(L, tinyfd_messageBoxW(title, message, dtype, itype, GetBool(L, "default_okyes"))); // opts, dialog_type, icon_type, ok / yes
+	#else
 	const char * title = GetStrOrBlank(L, "title");
 	const char * message = GetStrOrBlank(L, "message");
 	const char * dialog_types[] = { "ok", "okcancel", "yesno", "yesnocancel" };
@@ -138,11 +192,8 @@ static int w_messageBox (lua_State * L)
 	const char * dtype = dialog_types[luaL_checkoption(L, -2, "ok", dialog_types)];
 	const char * itype = icon_types[luaL_checkoption(L, -1, "info", icon_types)];
 
-	#ifdef _WIN32
-	lua_pushboolean(L, tinyfd_messageBoxW(title, message, dtype, itype, GetBool(L, "default_okyes")));	// opts, dialog_type, icon_type, ok / yes
-	#else
 	lua_pushboolean(L, tinyfd_messageBox(title, message, dtype, itype, GetBool(L, "default_okyes")));	// opts, dialog_type, icon_type, ok / yes
-	#endif
+	#endif /*WIN32*/
 
 	return 1;
 }
@@ -151,46 +202,68 @@ static int w_inputBox (lua_State * L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE);
 
-	const char * title = GetStrOrBlank(L, "title");
-	const char * message = GetStrOrBlank(L, "message");
+	#ifdef _WIN32
+	const wchar_t * title = GetStrOrBlankW(L, "title");
+	const wchar_t * message = GetStrOrBlankW(L, "message");
 
-	//
-	lua_getfield(L, 1, "default_input");// opts, def_input
-
+	lua_getfield(L, 1, "default_input"); // opts, def_input
 	const char * def_input;
 
 	if (lua_type(L, -1) == LUA_TBOOLEAN && !lua_toboolean(L, -1)) def_input = NULL;
+	else def_input = luaL_optstring(L, -1, "");
+	
+	return StringResponseW(L, tinyfd_inputBoxW(title, message, tinyfd_mbcsTo16(def_input))); // opts, def_input, input
+	#else
+	const char * title = GetStrOrBlank(L, "title");
+	const char * message = GetStrOrBlank(L, "message");
 
+	lua_getfield(L, 1, "default_input"); // opts, def_input
+	const char * def_input;
+
+	if (lua_type(L, -1) == LUA_TBOOLEAN && !lua_toboolean(L, -1)) def_input = NULL;
 	else def_input = luaL_optstring(L, -1, "");
 
-	#ifdef _WIN32
-	return StringResponse(L, tinyfd_inputBoxW(title, message, def_input));	// opts, def_input, input
-	#else
 	return StringResponse(L, tinyfd_inputBox(title, message, def_input));	// opts, def_input, input
-	#endif
+	#endif /*WIN32*/
 }
 
 static int w_saveFileDialog (lua_State * L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE);
 
+	#ifdef _WIN32
+	const wchar_t * title = GetStrOrBlankW(L, "title");
+	const wchar_t * def_path_and_file = GetStrOrBlankW(L, "default_path_and_file");
+	const wchar_t * filter_description = GetStrOrBlankW(L, "filter_description", NULL);
+	const wchar_t * filter_array[STATIC_FILTER_COUNT] = { 0 }, ** filters = filter_array;
+	int nfilters = GetFiltersW(L, &filters);	// opts, patts[, filters]
+
+	return StringResponseW(L, tinyfd_saveFileDialogW(title, def_path_and_file, nfilters, filters, filter_description)); // opts, patts[, filters], file
+	#else
 	const char * title = GetStrOrBlank(L, "title");
 	const char * def_path_and_file = GetStrOrBlank(L, "default_path_and_file");
 	const char * filter_description = GetStrOrBlank(L, "filter_description", NULL);
 	const char * filter_array[STATIC_FILTER_COUNT] = { 0 }, ** filters = filter_array;
 	int nfilters = GetFilters(L, &filters);	// opts, patts[, filters]
 
-	#ifdef _WIN32
-	#else
 	return StringResponse(L, tinyfd_saveFileDialog(title, def_path_and_file, nfilters, filters, filter_description));	// opts, patts[, filters], file
-	#endif
+	#endif /*WIN32*/
 }
 
 static int w_openFileDialog (lua_State * L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE);
 
-	//
+	#ifdef _WIN32
+	const wchar_t * title = GetStrOrBlankW(L, "title");
+	const wchar_t * def_path_and_file = GetStrOrBlankW(L, "default_path_and_file");
+	const wchar_t * filter_description = GetStrOrBlankW(L, "filter_description", NULL);
+	const wchar_t * filter_array[STATIC_FILTER_COUNT] = { 0 }, ** filters = filter_array;
+	int allow_multiple_selects = GetBool(L, "allow_multiple_selects");
+	int nfilters = GetFiltersW(L, &filters);	// opts, patts[, filters]
+
+	const char * files = tinyfd_utf16to8(tinyfd_openFileDialogW(title, def_path_and_file, nfilters, nfilters ? filters : NULL, filter_description, allow_multiple_selects));
+	#else
 	const char * title = GetStrOrBlank(L, "title");
 	const char * def_path_and_file = GetStrOrBlank(L, "default_path_and_file");
 	const char * filter_description = GetStrOrBlank(L, "filter_description", NULL);
@@ -198,11 +271,8 @@ static int w_openFileDialog (lua_State * L)
 	int allow_multiple_selects = GetBool(L, "allow_multiple_selects");
 	int nfilters = GetFilters(L, &filters);	// opts, patts[, filters]
 
-	//
-	#ifdef _WIN32
-	#else
 	const char * files = tinyfd_openFileDialog(title, def_path_and_file, nfilters, nfilters ? filters : NULL, filter_description, allow_multiple_selects);
-	#endif
+	#endif /*WIN32*/
 
 	if (!allow_multiple_selects || !files) return StringResponse(L, files);	// opts, patts[, filters], files?
 
@@ -236,13 +306,17 @@ static int w_selectFolderDialog (lua_State * L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE);
 
+	#ifdef _WIN32
+	const wchar_t * title = GetStrOrBlankW(L, "title");
+	const wchar_t * def_path = GetStrOrBlankW(L, "default_path");
+
+	return StringResponseW(L, tinyfd_selectFolderDialogW(title, def_path));	// opts, folder
+	#else
 	const char * title = GetStrOrBlank(L, "title");
 	const char * def_path = GetStrOrBlank(L, "default_path");
 
-	#ifdef _WIN32
-	#else
 	return StringResponse(L, tinyfd_selectFolderDialog(title, def_path));	// opts, folder
-	#endif
+	#endif /*WIN32*/
 }
 
 #ifdef _WIN32
@@ -252,7 +326,7 @@ static int w_colorChooserW (lua_State * L)
 	lua_settop(L, 1);	// opts
 	lua_getfield(L, 1, "out_rgb");	// opts, out
 
-	const char * title = GetStrOrBlank(L, "title");
+	const wchar_t * title = GetStrOrBlankW(L, "title");
 
 	//
 	unsigned char rgb[3];
@@ -272,7 +346,7 @@ static int w_colorChooserW (lua_State * L)
 
 	else def_hex_rgb = luaL_optstring(L, 3, "#000000");
 
-	const char * color = tinyfd_colorChooserW(title, def_hex_rgb, rgb, rgb);
+	const char * color = tinyfd_utf16to8(tinyfd_colorChooserW(title, tinyfd_utf8to16(def_hex_rgb), rgb, rgb));
 
 	if (color && lua_istable(L, 2))
 	{
@@ -290,13 +364,13 @@ static int w_notifyPopupW (lua_State * L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE);
 
-	const char * title = GetStrOrBlank(L, "title");
-	const char * message = GetStrOrBlank(L, "message");
+	const wchar_t * title = GetStrOrBlankW(L, "title");
+	const wchar_t * message = GetStrOrBlankW(L, "message");
 	const char * icon_types[] = { "info", "warning", "error" };
 
 	lua_getfield(L, 1, "icon_type"); // opts, icon_type
 
-	const char * itype = icon_types[luaL_checkoption(L, -1, "info", icon_types)];
+	const wchar_t * itype = tinyfd_mbcsTo16(icon_types[luaL_checkoption(L, -1, "info", icon_types)]);
 
 	lua_pushboolean(L, tinyfd_notifyPopupW(title, message, itype));	// opts, icon_type
 
