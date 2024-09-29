@@ -1,4 +1,4 @@
-local tinyfiledialogs = require("tinyfiledialogs") --package.loadlib("tinyfiledialogs", "luaopen_tinyfiledialogs")
+local tinyfiledialogs = require("lua-tinyfiledialogs") --package.loadlib("lua-tinyfiledialogs", "luaopen_tinyfiledialogs")()
 
 do -- tinyfiledialogs.openFileDialog
 	local files = tinyfiledialogs.openFileDialog{

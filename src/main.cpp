@@ -279,6 +279,7 @@ static int w_notifyPopup (lua_State * L)
 extern "C" int TINYFD_DLLEXPORT luaopen_tinyfiledialogs (lua_State * L)
 {
 	lua_newtable(L);
+	lua_pushcfunction(L, w_beep); lua_setfield(L, -2, "beep");
 	lua_pushcfunction(L, w_messageBox); lua_setfield(L, -2, "messageBox");
 	lua_pushcfunction(L, w_inputBox); lua_setfield(L, -2, "inputBox");
 	lua_pushcfunction(L, w_saveFileDialog); lua_setfield(L, -2, "saveFileDialog");
