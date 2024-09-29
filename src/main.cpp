@@ -81,18 +81,6 @@ static const char * GetStrOrBlank (lua_State * L, const char * key, const char *
 	return str;
 }
 
-static const wchar_t * GetStrOrBlankW (lua_State * L, const char * key, const char * blank = "")
-{
-	lua_getfield(L, 1, key);// ..., str?
-
-	const char * str = blank;	// might be NULL, thus not using luaL_optstring
-
-	if (!lua_isnil(L, -1)) str = luaL_checkstring(L, -1);
-
-	lua_pop(L, 1);
-	return tinyfd_utf8to16(str);
-}
-
 static int GetFilters (lua_State * L, const char *** filters)
 {
 	int nfilters = 0;
@@ -115,6 +103,27 @@ static int GetFilters (lua_State * L, const char *** filters)
 	else if (!lua_isnil(L, -1)) (*filters)[nfilters++] = luaL_checkstring(L, -1);
 
 	return nfilters;
+}
+
+static int StringResponse (lua_State * L, const char * res)
+{
+	if (!res) lua_pushboolean(L, 0);// ..., false
+	else lua_pushstring(L, res);// ..., res
+
+	return 1;
+}
+
+#ifdef _WIN32
+static const wchar_t * GetStrOrBlankW (lua_State * L, const char * key, const char * blank = "")
+{
+	lua_getfield(L, 1, key);// ..., str?
+
+	const char * str = blank;	// might be NULL, thus not using luaL_optstring
+
+	if (!lua_isnil(L, -1)) str = luaL_checkstring(L, -1);
+
+	lua_pop(L, 1);
+	return tinyfd_utf8to16(str);
 }
 
 static int GetFiltersW (lua_State * L, const wchar_t *** filters)
@@ -141,14 +150,6 @@ static int GetFiltersW (lua_State * L, const wchar_t *** filters)
 	return nfilters;
 }
 
-static int StringResponse (lua_State * L, const char * res)
-{
-	if (!res) lua_pushboolean(L, 0);// ..., false
-	else lua_pushstring(L, res);// ..., res
-
-	return 1;
-}
-
 static int StringResponseW (lua_State * L, const wchar_t * res)
 {
 	if (!res) lua_pushboolean(L, 0);// ..., false
@@ -156,6 +157,7 @@ static int StringResponseW (lua_State * L, const wchar_t * res)
 
 	return 1;
 }
+#endif /*WIN32*/
 
 static int w_beep (lua_State * L)
 {
@@ -435,7 +437,7 @@ static int w_notifyPopup (lua_State * L)
 	return 1;		
 }
 
-extern "C" int TINYFD_DLLEXPORT luaopen_tinyfiledialogs(lua_State* L)
+extern "C" int TINYFD_DLLEXPORT luaopen_tinyfiledialogs (lua_State * L)
 {
 	lua_newtable(L);
 	lua_pushcfunction(L, w_messageBox); lua_setfield(L, -2, "messageBox");
