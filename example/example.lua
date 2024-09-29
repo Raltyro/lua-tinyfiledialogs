@@ -1,6 +1,4 @@
--- call the function after requiring to get the functions from the module
--- because thats just how it works akwardly
-local tinyfiledialogs = require("tinyfiledialogs")() --package.loadlib("tinyfiledialogs", "luaopen_tinyfiledialogs")()
+local tinyfiledialogs = require("tinyfiledialogs") --package.loadlib("tinyfiledialogs", "luaopen_tinyfiledialogs")
 
 do -- tinyfiledialogs.openFileDialog
 	local files = tinyfiledialogs.openFileDialog{

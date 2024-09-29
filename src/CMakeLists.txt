@@ -33,7 +33,7 @@ endif ()
 ### "Libraries"
 add_library (lua-tinyfiledialogs MODULE main.cpp)
 
-add_library (tinyfiledialogs STATIC tinyfiledialogs.cpp)
+add_library (tinyfiledialogs STATIC tinyfiledialogs.c)
 
 ### Flags
 if (WIN32)
